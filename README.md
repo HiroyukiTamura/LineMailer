@@ -1,6 +1,6 @@
-#LineMailer
-LINE Massage APIを使って、ライン・email間でメッセージを中継するbotです。
-
+#LineMailer  
+LINE Massage APIを使って、ライン・email間でメッセージを中継するbotです。  
+  
 #やっていること  
 ・LINEからwebhook受信⇒メアドにメール送信。  
 友達追加時にはProfileAPIを叩いてユーザ名を取得⇒SpreadSheetに書き込み。  
