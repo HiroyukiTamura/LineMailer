@@ -1,15 +1,11 @@
-var channel_access_token = "**********************************";
-var address = "*********";
-var domain = "******.jp";
-var sheet_id = "***********************************";
-var log_sheet_id = "**********************************";
-var ask_phrase1 = "「";
-var ask_phrase2 = "」を登録しました。なお、botの詳しい仕様はプロフィールに記載してあります。";
+var channel_access_token = "********************************************************************************************************************************************************";
+var address = "************";
+var domain = "************";
+var sheet_id = "**********************************************";
+var log_sheet_id = "**************************************************";
+var profile_url = "https://api.line.me/v2/bot/profile/{userId}";
 
-var join_phrase = "このbotにコメントすると、*****のガラケーとやり取りができます。"
-+ "ただしグループ・トークルームではコメントの発信者を識別できません。"
-+ "まず、グループ名を教えてください。";
-
+//Postされると発火する
 function doPost(e) {
   log("doPost");
   var events = JSON.parse(e.postData.contents).events;
@@ -27,49 +23,40 @@ function doPost(e) {
     }
     
     if(event.type == "message"){
-      log("event.type == message");
+      log("event.type == message");      
+      
       if(event.message.type=="text"){
-        var user_ss = ss.getSheetByName("user");
-        var row = findRow(user_ss, id, 2);
-        if(row == 0){
-          log("row == 0");
-          var phrase = ask_phrase1 + event.message.text + ask_phrase2;
-          lineReply(event, phrase);
-          addFriend(event.message.text, id);
-        } else {
-          log("row != 0");
-          var name = user_ss.getRange(row, 1).getValue();
-          if(name == "unknown"){
-            log("name == unknown");
-            var phrase = ask_phrase1 + event.message.text + ask_phrase2;
-            lineReply(event, phrase);
-            user_ss.getRange(row, 1).setValue(event.message.text);
-          } else {
-            log("name != unknown");
-            sendMail(event.message.text, name);
-          }
-         }
-      } else {
-        ss0.appendRow([event.message.type, event.source.type, event.message.text]);
+        getNameAndSendMail(event.message.text, id);
       }
       
     } else if(event.type == "follow"){
       // 友だち追加・ブロック解除
       ss0.appendRow(["発火: 友達追加・ブロック解除"]);
-      addFriend("unknown", event.source.userId);
+      addFriend("unknown", id);
       
     } else if(event.type == "unfollow"){
       // ブロック
-      var user_id = event.source.userId;
-      removeRaw(ss, user_id, "user");
       ss0.appendRow(["発火: ブロック"]);
+      removeRaw(ss, id, "user");
       
     } else if(event.type == "join"){
       //グループ・トークルーム参加
       addFriend("unknown", id);
-      lineReply(event, join_phrase);
     }
  });
+}
+
+
+///////////////////////////////////////////////////////////
+//           汎用メソッド
+///////////////////////////////////////////////////////////
+
+function getNameAndSendMail(msg, id){
+  log("getNameAndSendMail()");
+  var name = askFriendName(id);
+  if(name != "error"){
+    sendMail(msg, name);
+  }
 }
 
 function log(msg){
@@ -77,40 +64,20 @@ function log(msg){
   ss0.appendRow(["発火", msg]);
 }
 
-function lineReply(e, text) {
-  log("lineReply");
-  var postData = {
-    "replyToken" : e.replyToken,
-    "messages" : [
-      {
-        "type" : "text",
-        "text" : text
-      }
-    ]
-  };
-
-  var options = {
-    "method" : "post",
-    "headers" : {
-      "Content-Type" : "application/json",
-      "Authorization" : "Bearer " + channel_access_token
-    },
-    "payload" : JSON.stringify(postData)
-  };
-
-  UrlFetchApp.fetch("https://api.line.me/v2/bot/message/reply", options);
-}
-
-
 function sendMail(msg, subject){
   Logger.log("発火 sendMail() msg: " + msg);
   MailApp.sendEmail(address + "@" + domain, subject, msg);
 }
 
 
+///////////////////////////////////////////////////////////
+//　　　　　　　　　スプレッドシート読み書き系メソッド
+///////////////////////////////////////////////////////////
+
 function findRow(sheet,val,col){ 
-  var dat = sheet.getDataRange().getValues(); 
+  var dat = sheet.getDataRange().getValues(); //受け取ったシートのデータを二次元配列に取得
  
+  //SpreadSheetの起数は行・列ともに1
   for(var i=0;i<dat.length;i++){
     if(dat[i][col-1] === val){
       return i+1;
@@ -119,9 +86,9 @@ function findRow(sheet,val,col){
   return 0;
 }
 
-
 function getFriendName(sheet,val,col){
-  var dat = sheet.getDataRange().getValues();
+  var dat = sheet.getDataRange().getValues(); //受け取ったシートのデータを二次元配列に取得
+ 
   for(var i=0;i<dat.length;i++){
     if(dat[i][col-1] === val){
       return dat[i][col-2];
@@ -130,13 +97,16 @@ function getFriendName(sheet,val,col){
   return null;
 }
 
-
 function addFriend(name, user_id){
-  //var user_id = e.source.userId;
   var data_sheet = SpreadsheetApp.openById(sheet_id).getSheetByName("user");
-  data_sheet.appendRow([name, user_id]);
+  var name = askFriendName(user_id);
+  if(name != "error"){
+    data_sheet.appendRow([name, user_id]);
+  } else {
+    log("name == error");
+    data_sheet.appendRow(["unknown", user_id]);
+  }
 }
-
 
 function removeRaw(ss, user_id, sheet_name){
   var user_ss = ss.getSheetByName(sheet_name);
@@ -144,33 +114,53 @@ function removeRaw(ss, user_id, sheet_name){
   user_ss.deleteRow(raw);
 }
 
+function askFriendName(id){
+  log("askFriendName id:" + id);
+  
+  var url = profile_url.replace("{userId}", id);
+  var responce = UrlFetchApp.fetch(url, makeOption("askFriendName"));
+  var name;
+  
+  if(responce.getResponseCode() == 200){
+    var data = JSON.parse(responce);
+    if(data.userId == id){
+      name = data.displayName;
+    } else {
+      name = "unknown";
+    }
+  } else {
+    log("askFriendName() id: " + id + " responceMsg: " + responce.getContentText());
+    name = "error";
+  }
+  
+  return name;
+}
+
+
+//////////////////////////////////////////////////////////
+//        時間トリガで、定期的にGmailをチェックする系メソッド
+//
+//ガラケーからメールでコマンドを送ると、コマンドに応じて動作してくれる。
+//gmail側の設定で、ガラケーのメアドからのメールに"linebot"というラベルとスターを自動的に貼るようにしてある。
+//メールをチェックしたらスターを外すことで、スターの有無でそのメールをチェックしたかどうかを見分けられるようにしてある。
+//コマンドは、
+//メールの題名が"友達一覧"⇒アカウント名の一覧をガラケーに送信する
+//メールの題名が"友達一覧"ではない⇒アカウント名でスプレッドシートから記録したidを検索し、idがあればpushAPIを叩く
+//////////////////////////////////////////////////////////
 
 function checkGmail(){
-  log("checkGmail()");
   var start = 0;
   var max = 500;
   var threads = GmailApp.search("label:linebot",start,max);
   var ss = SpreadsheetApp.getActiveSheet();
   var row = ss.getLastRow() + 1;
-  Logger.log(threads.length);
+  var user_ss = SpreadsheetApp.openById(sheet_id).getSheetByName("user");
   
+  //ラベルに合致したメールをひとつづつ取得する
   for(var n in threads){
-    var the = threads[n];
-    
-    var msgs = the.getMessages();
+    var msgs = threads[n].getMessages();
     for(m in msgs){
-      var msg = msgs[m];
-        
-      if(msg.isStarred()){
-        Logger.log(m);
-        var from = msg.getFrom();
-        var subject = msg.getSubject();
-        var body = msg.getPlainBody();
-        ss.getRange(row,1).setValue(msg.getDate());
-        ss.getRange(row, 2).setValue(from);
-        ss.getRange(row, 3).setValue(subject);
-        ss.getRange(row,4).setValue(body);
-        
+      if(msgs[m].isStarred()){
         var mail = address + "@" + domain;
         if(from == mail){
           if(subject == "友達一覧"){
@@ -185,8 +175,10 @@ function checkGmail(){
           log("name: " + name);
           var row = findRow(user_ss, name, 1);
           if(row == 0){
+            log("そんなアカウント名は存在しません！");
             sendMail("そんなアカウント名は存在しません！", "エラー");
           } else {
+            //idが取得できたのでpush通知する
             var ss = SpreadsheetApp.openById(sheet_id).getSheetByName("user");
             var id = ss.getRange(row, 2).getValue();
             log(id);
@@ -194,48 +186,85 @@ function checkGmail(){
           }
         }
         
-        msg.unstar();
-        
+        msgs[m].unstar();
         row++;
       }
     }
-    Utilities.sleep(1000);
   }
 }
 
-
 function makeAllFriendArr(dat){
+  log("makeAllFriendArr dat:" + dat);
   var arr = [];
-  for(var i=1;i<dat.length;i++){
-    var set = dat[i][0] + ";" + dat[i][1] + ";";
+  for(var i=0; i<dat.length; i++){
+    var set = dat[i][0] + ", ";
     arr.push(set);
   }
   return arr.join("");
 }
 
 
-function linePush(id2, text2){
+/////////////////////////////////////////////////////////////////
+//                    API叩く系のメソッド
+/////////////////////////////////////////////////////////////////
 
+function linePush(id, text){
+  log("linePush");
+  
   var postData = {
-    "to" : id2,
+    "to" : id,
     "messages" : [
       {
         "type" : "text",
-        "text" : text2
+        "text" : text
       }
     ]
   };
   
-  var options = {
-    "method" : "post",
-    "headers" : {
-      "Content-Type" : "application/json",
-      "Authorization" : "Bearer " + channel_access_token
-    },
-    "payload" : JSON.stringify(postData)
-  };
+  var responce = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", makeOption(postData));
+  log(responce.getContentText() + "__" + responce.getResponseCode());
+}
+
+function lineReply(e, text) {
+  log("lineReply");
   
-  var responce = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", options);
-  log(responce.getResponseCode());
-  log(responce.getContentText());
+  var postData = {
+    "replyToken" : e.replyToken,
+    "messages" : [
+      {
+        "type" : "text",
+        "text" : text
+      }
+    ]
+  };
+
+  var responce = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/reply", makeOption(postData));
+  log(responce.getContentText() + "__" + responce.getResponseCode());
+}
+
+
+function makeOption(postData){
+  log("makeOption()");
+  
+  var options;
+  if(postData != "askFriendName"){
+    options = {
+      "method" : "post",
+      "headers" : {
+        "Content-Type" : "application/json",
+        "Authorization" : "Bearer " + channel_access_token
+      },
+      "payload" : JSON.stringify(postData)
+    };
+    
+  } else {
+    options = {
+      "muteHttpExceptions" : true,
+      "headers" : {
+        "Authorization" : "Bearer " + channel_access_token
+      }
+    };
+  }
+  
+  return options;
 }
