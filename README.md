@@ -13,9 +13,11 @@ LINE Massage APIを使って、ライン・ガラケー間でメッセージを�
 
 # 図にすると
 1. トークでwebhook受信
-![logic-1](https://c1.staticflickr.com/5/4288/35050363136_cba08c034a_b.jpg)
+![logic-1](https://c1.staticflickr.com/5/4288/35050363136_cba08c034a_b.jpg)  
+
 2. グループ・トークルームでwebhook受信
-![logic-2](https://c1.staticflickr.com/5/4210/35050362686_fd0bd60b50_b.jpg)
+![logic-2](https://c1.staticflickr.com/5/4210/35050362686_fd0bd60b50_b.jpg)  
+
 3. ガラケーからメッセージ送信
 ![logic-3](https://c1.staticflickr.com/5/4234/35050363036_445ea25c2b_b.jpg)
   
